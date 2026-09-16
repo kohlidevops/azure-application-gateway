@@ -10,62 +10,38 @@ param skuName string
 @description('Application Gateway SKU tier')
 param skuTier string
 
-@description('Minimum Application Gateway instances')
+@description('Minimum Application Gateway capacity')
 param minCapacity int
 
-@description('Maximum Application Gateway instances')
+@description('Maximum Application Gateway capacity')
 param maxCapacity int
 
-@description('Existing Virtual Network name')
-param vnetName string
+@description('Application Gateway subnet resource ID')
+param subnetId string
 
-@description('Dedicated Application Gateway subnet name')
-param subnetName string
-
-@description('Standard Public IP name')
+@description('Public IP resource name')
 param publicIpName string
 
 @description('Frontend IP configuration name')
 param frontendIpConfigurationName string
 
-@description('Frontend port resource name')
-param frontendPortName string
+@description('Frontend port configurations')
+param frontendPorts array
 
-@description('Frontend listener port')
-param frontendPort int
+@description('Backend pool configurations')
+param backendPools array
 
-@description('Backend address pool name')
-param backendPoolName string
+@description('Backend HTTP settings configurations')
+param backendHttpSettings array
 
-@description('Backend server addresses')
-param backendAddresses array
+@description('Health probe configurations')
+param healthProbes array
 
-@description('Backend HTTP settings name')
-param backendHttpSettingsName string
+@description('HTTP listener configurations')
+param listeners array
 
-@description('Backend server port')
-param backendPort int
-
-@description('Backend protocol')
-param backendProtocol string
-
-@description('Cookie based affinity')
-param cookieBasedAffinity string
-
-@description('Backend request timeout')
-param requestTimeout int
-
-@description('HTTP listener name')
-param listenerName string
-
-@description('HTTP listener protocol')
-param listenerProtocol string
-
-@description('Request routing rule name')
-param routingRuleName string
-
-@description('Request routing rule priority')
-param routingRulePriority int
+@description('Routing rule configurations')
+param routingRules array
 
 @description('Enable HTTP/2')
 param enableHttp2 bool
@@ -74,53 +50,19 @@ param enableHttp2 bool
 param tags object
 
 
-var subnetId = resourceId(
-  'Microsoft.Network/virtualNetworks/subnets',
-  vnetName,
-  subnetName
-)
-
-var frontendIpConfigurationId = resourceId(
-  'Microsoft.Network/applicationGateways/frontendIPConfigurations',
-  applicationGatewayName,
-  frontendIpConfigurationName
-)
-
-var frontendPortId = resourceId(
-  'Microsoft.Network/applicationGateways/frontendPorts',
-  applicationGatewayName,
-  frontendPortName
-)
-
-var backendPoolId = resourceId(
-  'Microsoft.Network/applicationGateways/backendAddressPools',
-  applicationGatewayName,
-  backendPoolName
-)
-
-var backendHttpSettingsId = resourceId(
-  'Microsoft.Network/applicationGateways/backendHttpSettingsCollection',
-  applicationGatewayName,
-  backendHttpSettingsName
-)
-
-var listenerId = resourceId(
-  'Microsoft.Network/applicationGateways/httpListeners',
-  applicationGatewayName,
-  listenerName
-)
-
-
 resource publicIp 'Microsoft.Network/publicIPAddresses@2025-05-01' = {
   name: publicIpName
   location: location
+
   sku: {
     name: 'Standard'
+    tier: 'Regional'
   }
+
   properties: {
     publicIPAllocationMethod: 'Static'
+    publicIPAddressVersion: 'IPv4'
   }
-  tags: tags
 }
 
 
@@ -130,6 +72,7 @@ resource applicationGateway 'Microsoft.Network/applicationGateways@2025-05-01' =
   tags: tags
 
   properties: {
+
     sku: {
       name: skuName
       tier: skuTier
@@ -140,9 +83,11 @@ resource applicationGateway 'Microsoft.Network/applicationGateways@2025-05-01' =
       maxCapacity: maxCapacity
     }
 
+    enableHttp2: enableHttp2
+
     gatewayIPConfigurations: [
       {
-        name: 'appGatewayIpConfiguration'
+        name: 'appgw-ip-config'
 
         properties: {
           subnet: {
@@ -165,91 +110,131 @@ resource applicationGateway 'Microsoft.Network/applicationGateways@2025-05-01' =
     ]
 
     frontendPorts: [
-      {
-        name: frontendPortName
+      for frontendPort in frontendPorts: {
+        name: frontendPort.name
 
         properties: {
-          port: frontendPort
+          port: frontendPort.port
         }
       }
     ]
 
     backendAddressPools: [
-      {
-        name: backendPoolName
+      for backendPool in backendPools: {
+        name: backendPool.name
 
         properties: {
-          backendAddresses: [
-            for backend in backendAddresses: {
-              ipAddress: backend.ipAddress
-            }
-          ]
+          backendAddresses: backendPool.backendAddresses
         }
       }
     ]
 
     backendHttpSettingsCollection: [
-      {
-        name: backendHttpSettingsName
+      for httpSetting in backendHttpSettings: {
+        name: httpSetting.name
 
         properties: {
-          port: backendPort
-          protocol: backendProtocol
-          cookieBasedAffinity: cookieBasedAffinity
-          requestTimeout: requestTimeout
+          port: httpSetting.port
+          protocol: httpSetting.protocol
+          cookieBasedAffinity: httpSetting.cookieBasedAffinity
+          requestTimeout: httpSetting.requestTimeout
+
+          probe: {
+            id: resourceId(
+              'Microsoft.Network/applicationGateways/probes',
+              applicationGatewayName,
+              httpSetting.probeName
+            )
+          }
+        }
+      }
+    ]
+
+    probes: [
+      for probe in healthProbes: {
+        name: probe.name
+
+        properties: {
+          protocol: probe.protocol
+          host: probe.host
+          path: probe.path
+          interval: probe.interval
+          timeout: probe.timeout
+          unhealthyThreshold: probe.unhealthyThreshold
+
+          match: {
+            statusCodes: probe.statusCodes
+          }
         }
       }
     ]
 
     httpListeners: [
-      {
-        name: listenerName
+      for listener in listeners: {
+        name: listener.name
 
         properties: {
           frontendIPConfiguration: {
-            id: frontendIpConfigurationId
+            id: resourceId(
+              'Microsoft.Network/applicationGateways/frontendIPConfigurations',
+              applicationGatewayName,
+              frontendIpConfigurationName
+            )
           }
 
           frontendPort: {
-            id: frontendPortId
+            id: resourceId(
+              'Microsoft.Network/applicationGateways/frontendPorts',
+              applicationGatewayName,
+              listener.frontendPortName
+            )
           }
 
-          protocol: listenerProtocol
-          requireServerNameIndication: false
+          protocol: listener.protocol
         }
       }
     ]
 
     requestRoutingRules: [
-      {
-        name: routingRuleName
+      for rule in routingRules: {
+        name: rule.name
 
         properties: {
           ruleType: 'Basic'
-
-          priority: routingRulePriority
+          priority: rule.priority
 
           httpListener: {
-            id: listenerId
+            id: resourceId(
+              'Microsoft.Network/applicationGateways/httpListeners',
+              applicationGatewayName,
+              rule.listenerName
+            )
           }
 
           backendAddressPool: {
-            id: backendPoolId
+            id: resourceId(
+              'Microsoft.Network/applicationGateways/backendAddressPools',
+              applicationGatewayName,
+              rule.backendPoolName
+            )
           }
 
           backendHttpSettings: {
-            id: backendHttpSettingsId
+            id: resourceId(
+              'Microsoft.Network/applicationGateways/backendHttpSettingsCollection',
+              applicationGatewayName,
+              rule.httpSettingName
+            )
           }
         }
       }
     ]
-
-    enableHttp2: enableHttp2
   }
 }
 
 
 output applicationGatewayId string = applicationGateway.id
+
 output applicationGatewayName string = applicationGateway.name
-output publicIpId string = publicIp.id
+
 output publicIpAddress string = publicIp.properties.ipAddress
