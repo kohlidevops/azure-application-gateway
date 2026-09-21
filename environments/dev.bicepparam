@@ -13,7 +13,7 @@ param applicationGatewayConfig = {
   skuTier: 'Standard_v2'
 
   minCapacity: 1
-  maxCapacity: 3
+  maxCapacity: 2
 
   subnetId: '/subscriptions/a98c3501-7e50-4380-a713-b02e7444f4e5/resourceGroups/rg-sql-ag-dev/providers/Microsoft.Network/virtualNetworks/vnet-sql-ag-dev/subnets/appgw-subnet'
 
