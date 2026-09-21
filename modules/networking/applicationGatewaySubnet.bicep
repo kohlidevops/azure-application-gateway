@@ -1,3 +1,5 @@
+// Dont need to deploy this as we already deployed app-gateway-subnet
+
 @description('Existing Virtual Network name')
 param vnetName string
 
